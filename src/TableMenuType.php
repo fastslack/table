@@ -9,12 +9,9 @@
 
 namespace Joomla\Table;
 
-//use Joomla\Date\Date;
+use Joomla\DI\Container;
 use Joomla\Event\Dispatcher;
 use Joomla\Filter\OutputFilter;
-//use Joomla\Filesystem\Folder;
-//use Joomla\Language\Text;
-//use Joomla\Registry\Registry;
 
 /**
  * Menu Types table
@@ -30,9 +27,9 @@ class TableMenuType extends Table
 	 *
 	 * @since  11.1
 	 */
-	public function __construct(\Joomla\Database\Mysqli\MysqliDriver $db, \Joomla\Event\Dispatcher $dispatcher = null)
+	public function __construct(Container $container)
 	{
-		parent::__construct('#__menu_types', 'id', $db, $dispatcher);
+		parent::__construct('#__menu_types', 'id', $container);
 	}
 
 	/**

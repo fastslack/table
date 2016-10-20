@@ -10,9 +10,10 @@
 namespace Joomla\Table;
 
 //use Joomla\Access\AccessRules;
-use Joomla\Registry\Registry;
+use Joomla\DI\Container;
 use Joomla\Date\Date;
 use Joomla\Event\Dispatcher;
+use Joomla\Registry\Registry;
 
 /**
  * Category table
@@ -28,11 +29,17 @@ class TableCategory extends TableNested
 	 *
 	 * @since   11.1
 	 */
-	public function __construct(\Joomla\Database\Mysqli\MysqliDriver $db, \Joomla\Event\Dispatcher $dispatcher = null)
+	public function __construct(Container $container)
 	{
 		$this->typeAlias = '{extension}.category';
-		parent::__construct('#__categories', 'id', $db, $dispatcher);
-		//$this->access = (int) JFactory::getConfig()->get('access');
+
+		parent::__construct('#__categories', 'id', $container);
+
+		// If the access property exists, set the default.
+		if ($container->exists('access'))
+		{
+			$this->access = (int) $container->get('access');
+		}
 	}
 
 	/**
@@ -163,7 +170,8 @@ class TableCategory extends TableNested
 
 		if (trim(str_replace('-', '', $this->alias)) == '')
 		{
-			$this->alias = JFactory::getDate()->format('Y-m-d-H-i-s');
+			$date = new Date();
+			$this->alias = $date->format('Y-m-d-H-i-s');
 		}
 
 		return true;

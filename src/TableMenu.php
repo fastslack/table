@@ -10,6 +10,7 @@
 namespace Joomla\Table;
 
 use Joomla\Date\Date;
+use Joomla\DI\Container;
 use Joomla\Event\Dispatcher;
 use Joomla\Filter\OutputFilter;
 use Joomla\Filesystem\Folder;
@@ -30,12 +31,15 @@ class TableMenu extends TableNested
 	 *
 	 * @since   11.1
 	 */
-	public function __construct(\Joomla\Database\Mysqli\MysqliDriver $db, \Joomla\Event\Dispatcher $dispatcher = null)
+	public function __construct(Container $container)
 	{
-		parent::__construct('#__menu', 'id', $db);
+		parent::__construct('#__menu', 'id', $container);
 
-		// Set the default access level.
-		//$this->access = (int) JFactory::getConfig()->get('access');
+		// If the access property exists, set the default.
+		if ($container->exists('access'))
+		{
+			$this->access = (int) $container->get('access');
+		}
 	}
 
 	/**

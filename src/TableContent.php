@@ -10,6 +10,7 @@
 namespace Joomla\Table;
 
 use Joomla\Date\Date;
+use Joomla\DI\Container;
 use Joomla\Event\Dispatcher;
 use Joomla\Filter\OutputFilter;
 use Joomla\Language\Text;
@@ -32,10 +33,10 @@ class TableContent extends Table
 	 *
 	 * @since   11.1
 	 */
-	public function __construct(\Joomla\Database\Mysqli\MysqliDriver $db, \Joomla\Event\Dispatcher $dispatcher = null)
+	public function __construct(Container $container)
 	{
 		$this->typeAlias = 'com_content.article';
-		parent::__construct('#__content', 'id', $db, $dispatcher);
+		parent::__construct('#__content', 'id', $container);
 
 		// Set the alias since the column is called state
 		$this->setColumnAlias('published', 'state');
@@ -204,7 +205,8 @@ class TableContent extends Table
 
 		if (trim(str_replace('-', '', $this->alias)) == '')
 		{
-			$this->alias = JFactory::getDate()->format('Y-m-d-H-i-s');
+			$date = new Date();
+			$this->alias = $date->format('Y-m-d-H-i-s');
 		}
 
 		if (trim(str_replace('&nbsp;', '', $this->fulltext)) == '')
@@ -242,7 +244,7 @@ class TableContent extends Table
 				$this->metadata = '{}';
 			}
 
-			// If we don't have any access rules set at this point just use an empty JAccessRules class
+			// If we don't have any access rules set at this point just use an empty AccessRules class
 			if (!$this->getRules())
 			{
 				$rules = $this->getDefaultAssetValues('com_content');
@@ -296,12 +298,12 @@ class TableContent extends Table
 	 *
 	 * @param   $string  $component  The component asset name to search for
 	 *
-	 * @return  JAccessRules  The JAccessRules object for the asset
+	 * @return  AccessRules  The AccessRules object for the asset
 	 */
 	protected function getDefaultAssetValues($component)
 	{
 		// Need to find the asset id by the name of the component.
-		$db = JFactory::getDbo();
+		$db = $this->container->get('db');
 		$query = $db->getQuery(true)
 			->select($db->quoteName('id'))
 			->from($db->quoteName('#__assets'))
@@ -309,7 +311,7 @@ class TableContent extends Table
 		$db->setQuery($query);
 		$assetId = (int) $db->loadResult();
 
-		return JAccess::getAssetRules($assetId);
+		return Access::getAssetRules($assetId);
 	}
 
 	/**

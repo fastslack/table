@@ -9,17 +9,16 @@
 
 namespace Joomla\Table;
 
-use Joomla\Registry\Registry;
-use Joomla\Filesystem\Path;
+use Joomla\Access\AccessRules;
+use Joomla\Date\Date;
+use Joomla\DI\Container;
 use Joomla\Event\Event;
-//use Joomla\Cms\Event\AbstractEvent;
 use Joomla\Event\Dispatcher;
 use Joomla\Event\DispatcherAwareInterface;
 use Joomla\Event\DispatcherAwareTrait;
 use Joomla\Event\DispatcherInterface;
-
-use JUpgradeNext\Access\AccessRules;
-use JUpgradeNext\Event\AbstractEvent;
+use Joomla\Filesystem\Path;
+use Joomla\Registry\Registry;
 
 /**
  * Abstract Table class
@@ -139,18 +138,25 @@ abstract class Table extends Registry implements TableInterface, DispatcherAware
 	public $typeAlias = null;
 
 	/**
+	 * Joomla! DI Container.
+	 *
+	 * @var    Container
+	 * @since  4.0
+	 */
+	protected $container = null;
+
+	/**
 	 * Object constructor to set table and key fields.  In most cases this will
 	 * be overridden by child classes to explicitly set the table and key fields
 	 * for a particular database table.
 	 *
 	 * @param   string               $table       Name of the table to model.
 	 * @param   mixed                $key         Name of the primary key field in the table or array of field names that compose the primary key.
-	 * @param   JDatabaseDriver      $db          JDatabaseDriver object.
-	 * @param   DispatcherInterface  $dispatcher  Event dispatcher for this table
+	 * @param   Container            $container   A Joomla! DI Container with DatabaseServiceProvider and DispatcherInterface.
 	 *
 	 * @since   11.1
 	 */
-	public function __construct($table, $key, \Joomla\Database\Mysqli\MysqliDriver $db, DispatcherInterface $dispatcher = null)
+	public function __construct($table, $key, Container $container)
 	{
 		parent::__construct();
 
@@ -181,7 +187,7 @@ abstract class Table extends Registry implements TableInterface, DispatcherAware
 		// Set the singular table key for backwards compatibility.
 		$this->_tbl_key = $this->getKeyName();
 
-		$this->_db = $db;
+		$this->_db = $container->get('db');
 
 		// Initialise the table properties.
 		$fields = $this->getFields();
@@ -205,34 +211,25 @@ abstract class Table extends Registry implements TableInterface, DispatcherAware
 		}
 
 		// If the access property exists, set the default.
-		if (property_exists($this, 'access'))
+		if ($container->exists('access'))
 		{
-			// @@ TODO: Fix this
-			//$this->access = (int) JFactory::getConfig()->get('access');
+			$this->access = (int) $container->get('access');
 		}
 
 		// Create or set a Dispatcher
-		if (!is_object($dispatcher) || !($dispatcher instanceof DispatcherInterface))
+		if (!$container->exists('dispatcher') || !($container->get('dispatcher') instanceof DispatcherInterface))
 		{
-			// TODO Maybe we should use a dedicated "behaviour" dispatcher for performance reasons and to prevent system plugins from butting in?
-			//$dispatcher = JFactory::getApplication()->getDispatcher();
 			// Create a dispatcher.
 			$dispatcher = new Dispatcher;
+			$container->set('dispatcher', $dispatcher);
 		}
-
-		$this->setDispatcher($dispatcher);
-
-		//$event = AbstractEvent::create(
-		//	'onTableObjectCreate',
-		//	[
-		//		'subject'	=> $this,
-		//	]
-		//);
 
 		$event = new Event('onTableObjectCreate');
 		$event->setArgument('subject', $this);
 
-		$this->getDispatcher()->dispatch('onTableObjectCreate', $event);
+		$container->get('dispatcher')->dispatch('onTableObjectCreate', $event);
+
+		$this->container = $container;
 	}
 
 	/**
@@ -282,7 +279,7 @@ abstract class Table extends Registry implements TableInterface, DispatcherAware
 		// Sanitize and prepare the table class name.
 		$type       = preg_replace('/[^A-Z0-9_\.-]/i', '', $type);
 		$tableClass = $prefix . ucfirst($type);
-		$tableClass = '\\JUpgradeNext\\Table\\' . $tableClass;
+		$tableClass = '\\Joomla\\Table\\' . $tableClass;
 
 		// Only try to load the class if it doesn't already exist.
 		if (!class_exists($tableClass))
@@ -314,7 +311,7 @@ abstract class Table extends Registry implements TableInterface, DispatcherAware
 			}
 		}
 
-		// If a database object was passed in the configuration array use it, otherwise get the global one from JFactory.
+		// If a database object was passed in the configuration array use it.
 		$db = isset($config['dbo']) ? $config['dbo'] : null;
 		$dispatcher = isset($config['dispatcher']) ? $config['dispatcher'] : null;
 
@@ -324,12 +321,16 @@ abstract class Table extends Registry implements TableInterface, DispatcherAware
 		//	return JFactory::getContainer()->get($tableClass);
 		//}
 
-		//$class_name = '\\JUpgradeNext\\Table\\' . $tableClass;
-$class_name = $tableClass;
-//echo $class_name;
+		$container = new Container;
+
+		$container->share('db', function (Container $c) use ($db) {
+			return $db;
+		}, true);
+
+		$container->set('dispatcher', $dispatcher);
 
 		// Instantiate a new table class and return it.
-		return new $class_name($db, $dispatcher);
+		return new $tableClass($container);
 	}
 
 	/**
@@ -598,13 +599,13 @@ $class_name = $tableClass;
 	 */
 	public function reset()
 	{
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableBeforeReset',
 			[
 				'subject'	=> $this,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableBeforeReset', $event);
+		$this->container->get('dispatcher')->dispatch('onTableBeforeReset', $event);
 
 		// Get the default values for the class from the table.
 		foreach ($this->getFields() as $k => $v)
@@ -619,13 +620,14 @@ $class_name = $tableClass;
 		// Reset table errors
 		$this->_errors = array();
 
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableAfterReset',
 			[
 				'subject'	=> $this,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableAfterReset', $event);
+
+		$this->container->get('dispatcher')->dispatch('onTableAfterReset', $event);
 	}
 
 	/**
@@ -643,22 +645,12 @@ $class_name = $tableClass;
 	 */
 	public function bind($src, $ignore = array())
 	{
-		/*
-		$event = AbstractEvent::create(
-			'onTableBeforeBind',
-			[
-				'subject'	=> $this,
-				'src'		=> $src,
-				'ignore'	=> $ignore
-			]
-		);*/
-
 		$event = new Event('onTableBeforeBind');
 		$event->setArgument('subject', $this);
 		$event->setArgument('src', $src);
 		$event->setArgument('ignore', $ignore);
 
-		$this->getDispatcher()->dispatch('onTableBeforeBind', $event);
+		$this->container->get('dispatcher')->dispatch('onTableBeforeBind', $event);
 
 		// JSON encode any fields required
 		if (!empty($this->_jsonEncode))
@@ -703,22 +695,12 @@ $class_name = $tableClass;
 			}
 		}
 
-		/*
-		$event = AbstractEvent::create(
-			'onTableAfterBind',
-			[
-				'subject'	=> $this,
-				'src'		=> $src,
-				'ignore'	=> $ignore
-			]
-		);*/
-
 		$event = new Event('onTableAfterBind');
 		$event->setArgument('subject', $this);
 		$event->setArgument('src', $src);
 		$event->setArgument('ignore', $ignore);
 
-		$this->getDispatcher()->dispatch('onTableAfterBind', $event);
+		$this->container->get('dispatcher')->dispatch('onTableAfterBind', $event);
 
 		return true;
 	}
@@ -739,23 +721,12 @@ $class_name = $tableClass;
 	 */
 	public function load($keys = null, $reset = true)
 	{
-		/*
-		// Pre-processing by observers
-		$event = AbstractEvent::create(
-			'onTableBeforeLoad',
-			[
-				'subject'	=> $this,
-				'keys'		=> $keys,
-				'reset'		=> $reset,
-			]
-		);*/
-
 		$event = new Event('onTableBeforeLoad');
 		$event->setArgument('subject', $this);
 		$event->setArgument('keys', $keys);
 		$event->setArgument('reset', $reset);
 
-		$this->getDispatcher()->dispatch('onTableBeforeLoad', $event);
+		$this->container->get('dispatcher')->dispatch('onTableBeforeLoad', $event);
 
 		if (empty($keys))
 		{
@@ -833,7 +804,7 @@ $class_name = $tableClass;
 		}
 
 		// Post-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableAfterLoad',
 			[
 				'subject'		=> $this,
@@ -841,7 +812,7 @@ $class_name = $tableClass;
 				'row'			=> $row,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableAfterLoad', $event);
+		$this->container->get('dispatcher')->dispatch('onTableAfterLoad', $event);
 
 		return $result;
 	}
@@ -858,13 +829,13 @@ $class_name = $tableClass;
 	public function check()
 	{
 		// Post-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableCheck',
 			[
 				'subject'		=> $this,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableCheck', $event);
+		$this->container->get('dispatcher')->dispatch('onTableCheck', $event);
 
 		return true;
 	}
@@ -888,7 +859,7 @@ $class_name = $tableClass;
 		$k = $this->_tbl_keys;
 
 		// Pre-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableBeforeStore',
 			[
 				'subject'		=> $this,
@@ -896,7 +867,7 @@ $class_name = $tableClass;
 				'k'				=> $k,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableBeforeStore', $event);
+		$this->container->get('dispatcher')->dispatch('onTableBeforeStore', $event);
 
 		$currentAssetId = 0;
 
@@ -952,7 +923,7 @@ $class_name = $tableClass;
 
 			$config = array();
 			$config['dbo'] = $this->getDbo();
-			$config['dispatcher'] = $this->getDispatcher();
+			$config['dispatcher'] = $this->container->get('dispatcher');
 
 			$asset = self::getInstance('Asset', 'Table', $config);
 			$asset->loadByName($name);
@@ -1013,14 +984,14 @@ $class_name = $tableClass;
 		}
 
 		// Post-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableAfterStore',
 			[
 				'subject'	=> $this,
 				'result'	=> &$result,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableAfterStore', $event);
+		$this->container->get('dispatcher')->dispatch('onTableAfterStore', $event);
 
 		return $result;
 	}
@@ -1118,14 +1089,14 @@ $class_name = $tableClass;
 		}
 
 		// Pre-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableBeforeDelete',
 			[
 				'subject'	=> $this,
 				'pk'		=> $pk,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableBeforeDelete', $event);
+		$this->container->get('dispatcher')->dispatch('onTableBeforeDelete', $event);
 
 		// If tracking assets, remove the asset first.
 		if ($this->_trackAssets)
@@ -1156,14 +1127,14 @@ $class_name = $tableClass;
 		$this->_db->execute();
 
 		// Post-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableAfterDelete',
 			[
 				'subject'	=> $this,
 				'pk'		=> $pk,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableAfterDelete', $event);
+		$this->container->get('dispatcher')->dispatch('onTableAfterDelete', $event);
 
 		return true;
 	}
@@ -1186,7 +1157,7 @@ $class_name = $tableClass;
 	public function checkOut($userId, $pk = null)
 	{
 		// Pre-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableBeforeCheckout',
 			[
 				'subject'	=> $this,
@@ -1194,7 +1165,7 @@ $class_name = $tableClass;
 				'pk'		=> $pk,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableBeforeCheckout', $event);
+		$this->container->get('dispatcher')->dispatch('onTableBeforeCheckout', $event);
 
 		$checkedOutField = $this->getColumnAlias('checked_out');
 		$checkedOutTimeField = $this->getColumnAlias('checked_out_time');
@@ -1230,7 +1201,8 @@ $class_name = $tableClass;
 		}
 
 		// Get the current time in the database format.
-		$time = JFactory::getDate()->toSql();
+		$date = new Date();
+		$time = $date->__toString();
 
 		// Check the row out by primary key.
 		$query = $this->_db->getQuery(true)
@@ -1246,7 +1218,7 @@ $class_name = $tableClass;
 		$this->$checkedOutTimeField = $time;
 
 		// Post-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableAfterCheckout',
 			[
 				'subject'	=> $this,
@@ -1254,7 +1226,7 @@ $class_name = $tableClass;
 				'pk'		=> $pk,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableAfterCheckout', $event);
+		$this->container->get('dispatcher')->dispatch('onTableAfterCheckout', $event);
 
 		return true;
 	}
@@ -1274,14 +1246,14 @@ $class_name = $tableClass;
 	public function checkIn($pk = null)
 	{
 		// Pre-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableBeforeCheckin',
 			[
 				'subject'	=> $this,
 				'pk'		=> $pk,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableBeforeCheckin', $event);
+		$this->container->get('dispatcher')->dispatch('onTableBeforeCheckin', $event);
 
 		$checkedOutField = $this->getColumnAlias('checked_out');
 		$checkedOutTimeField = $this->getColumnAlias('checked_out_time');
@@ -1332,14 +1304,14 @@ $class_name = $tableClass;
 		$this->$checkedOutTimeField = '';
 
 		// Post-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableAfterCheckin',
 			[
 				'subject'	=> $this,
 				'pk'		=> $pk,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableAfterCheckin', $event);
+		$this->container->get('dispatcher')->dispatch('onTableAfterCheckin', $event);
 
 		return true;
 	}
@@ -1398,14 +1370,14 @@ $class_name = $tableClass;
 	public function hit($pk = null)
 	{
 		// Pre-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableBeforeHit',
 			[
 				'subject'	=> $this,
 				'pk'		=> $pk,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableBeforeHit', $event);
+		$this->container->get('dispatcher')->dispatch('onTableBeforeHit', $event);
 
 		$hitsField = $this->getColumnAlias('hits');
 
@@ -1451,14 +1423,14 @@ $class_name = $tableClass;
 		$this->hits++;
 
 		// Pre-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableAfterHit',
 			[
 				'subject'	=> $this,
 				'pk'		=> $pk,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableAfterHit', $event);
+		$this->container->get('dispatcher')->dispatch('onTableAfterHit', $event);
 
 		return true;
 	}
@@ -1490,7 +1462,7 @@ $class_name = $tableClass;
 			return false;
 		}
 
-		$db = JFactory::getDbo();
+		$db = $this->container->get('db');
 		$query = $db->getQuery(true)
 			->select('COUNT(userid)')
 			->from($db->quoteName('#__session'))
@@ -1598,7 +1570,7 @@ $class_name = $tableClass;
 		}
 
 		// Pre-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableBeforeReorder',
 			[
 				'subject'	=> $this,
@@ -1606,7 +1578,7 @@ $class_name = $tableClass;
 				'where'		=> $where,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableBeforeReorder', $event);
+		$this->container->get('dispatcher')->dispatch('onTableBeforeReorder', $event);
 
 		$this->_db->setQuery($query);
 		$rows = $this->_db->loadObjectList();
@@ -1632,7 +1604,7 @@ $class_name = $tableClass;
 		}
 
 		// Post-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableAfterReorder',
 			[
 				'subject'	=> $this,
@@ -1640,7 +1612,7 @@ $class_name = $tableClass;
 				'where'		=> $where,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableAfterReorder', $event);
+		$this->container->get('dispatcher')->dispatch('onTableAfterReorder', $event);
 
 		return true;
 	}
@@ -1700,7 +1672,7 @@ $class_name = $tableClass;
 		}
 
 		// Pre-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableBeforeMove',
 			[
 				'subject'	=> $this,
@@ -1709,7 +1681,7 @@ $class_name = $tableClass;
 				'where'		=> $where,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableBeforeMove', $event);
+		$this->container->get('dispatcher')->dispatch('onTableBeforeMove', $event);
 
 		// Select the first row with the criteria.
 		$this->_db->setQuery($query, 0, 1);
@@ -1749,7 +1721,7 @@ $class_name = $tableClass;
 		}
 
 		// Post-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableAfterMove',
 			[
 				'subject'	=> $this,
@@ -1758,7 +1730,7 @@ $class_name = $tableClass;
 				'where'		=> $where,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableAfterMove', $event);
+		$this->container->get('dispatcher')->dispatch('onTableAfterMove', $event);
 
 		return true;
 	}
@@ -1783,7 +1755,7 @@ $class_name = $tableClass;
 		$state  = (int) $state;
 
 		// Pre-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableBeforePublish',
 			[
 				'subject'	=> $this,
@@ -1792,7 +1764,7 @@ $class_name = $tableClass;
 				'userId'	=> $userId,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableBeforePublish', $event);
+		$this->container->get('dispatcher')->dispatch('onTableBeforePublish', $event);
 
 		if (!is_null($pks))
 		{
@@ -1846,7 +1818,8 @@ $class_name = $tableClass;
 			// If publishing, set published date/time if not previously set
 			if ($state && property_exists($this, 'publish_up') && (int) $this->publish_up == 0)
 			{
-				$nowDate = $this->_db->quote(JFactory::getDate()->toSql());
+				$date = new Date();
+				$nowDate = $this->_db->quote($date->__toString());
 				$query->set($this->_db->quoteName($this->getColumnAlias('publish_up')) . ' = ' . $nowDate);
 			}
 
@@ -1903,7 +1876,7 @@ $class_name = $tableClass;
 		$this->setError('');
 
 		// Pre-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableAfterPublish',
 			[
 				'subject'	=> $this,
@@ -1912,7 +1885,7 @@ $class_name = $tableClass;
 				'userId'	=> $userId,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableAfterPublish', $event);
+		$this->container->get('dispatcher')->dispatch('onTableAfterPublish', $event);
 
 		return true;
 	}

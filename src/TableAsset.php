@@ -9,6 +9,9 @@
 
 namespace Joomla\Table;
 
+use Joomla\DI\Container;
+use Joomla\Event\Dispatcher;
+
 /**
  * Table class supporting modified pre-order tree traversal behavior.
  *
@@ -55,9 +58,9 @@ class TableAsset extends TableNested
 	 *
 	 * @since   11.1
 	 */
-	public function __construct(\Joomla\Database\Mysqli\MysqliDriver $db, \Joomla\Event\Dispatcher $dispatcher = null)
+	public function __construct(Container $container)
 	{
-		parent::__construct('#__assets', 'id', $db, $dispatcher);
+		parent::__construct('#__assets', 'id', $container);
 	}
 
 	/**

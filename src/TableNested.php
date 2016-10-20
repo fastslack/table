@@ -11,7 +11,7 @@ namespace Joomla\Table;
 use Joomla\Event\Dispatcher;
 use Joomla\Event\Event;
 //use Joomla\Cms\Event\AbstractEvent;
-use Joomla\Event\AbstractEvent;
+//use Joomla\Event\AbstractEvent;
 use Joomla\Utilities\ArrayHelper;
 
 use stdClass;
@@ -532,7 +532,7 @@ class TableNested extends Table
 				'pk'	=> $pk,
 			]
 		);
-		$this->getDispatcher()->dispatch('onBeforeDelete', $event);
+		$this->container->get('dispatcher')->dispatch('onBeforeDelete', $event);
 
 		// Lock the table for writing.
 		if (!$this->_lock())
@@ -662,7 +662,7 @@ class TableNested extends Table
 				'pk'	=> $pk,
 			]
 		);
-		$this->getDispatcher()->dispatch('onAfterDelete', $event);
+		$this->container->get('dispatcher')->dispatch('onAfterDelete', $event);
 
 		return true;
 	}
@@ -736,7 +736,7 @@ class TableNested extends Table
 		$k = $this->_tbl_key;
 
 		// Pre-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableBeforeStore',
 			[
 				'subject'		=> $this,
@@ -744,7 +744,7 @@ class TableNested extends Table
 				'k'				=> $k,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableBeforeStore', $event);
+		$this->container->get('dispatcher')->dispatch('onTableBeforeStore', $event);
 
 		// @codeCoverageIgnoreStart
 		if ($this->_debug)
@@ -872,7 +872,7 @@ class TableNested extends Table
 		// We do not want parent::store to update observers since tables are locked and we are updating it from this
 		// level of store():
 
-		$oldDispatcher = clone $this->getDispatcher();
+		$oldDispatcher = clone $this->container->get('dispatcher');
 		$blankDispatcher = new Dispatcher;
 		$this->setDispatcher($blankDispatcher);
 
@@ -894,14 +894,14 @@ class TableNested extends Table
 		$this->_unlock();
 
 		// Post-processing by observers
-		$event = AbstractEvent::create(
+		$event = new Event(
 			'onTableAfterStore',
 			[
 				'subject'	=> $this,
 				'result'	=> &$result,
 			]
 		);
-		$this->getDispatcher()->dispatch('onTableAfterStore', $event);
+		$this->container->get('dispatcher')->dispatch('onTableAfterStore', $event);
 
 		return $result;
 	}
