@@ -1,5 +1,5 @@
 {
-    "name": "joomla/table",
+    "name": "matware-lab/table",
     "type": "joomla-package",
     "description": "Joomla! Framework Table Package",
     "keywords": ["joomla", "framework", "table"],
